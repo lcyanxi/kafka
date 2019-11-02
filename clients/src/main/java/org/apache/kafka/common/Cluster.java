@@ -28,8 +28,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
+
 /**
- * A representation of a subset of the nodes, topics, and partitions in the Kafka cluster.
+ * Cluster 实例主要是保存：
+ broker.id 与 node 的对应关系；
+ topic 与 partition （PartitionInfo）的对应关系；
+ node 与 partition （PartitionInfo）的对应关系。
  */
 public final class Cluster {
 

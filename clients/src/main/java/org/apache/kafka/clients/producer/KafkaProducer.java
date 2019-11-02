@@ -907,28 +907,29 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
     /**
      * Wait for cluster metadata including partitions for the given topic to be available.
-     * @param topic The topic we want metadata for
-     * @param partition A specific partition expected to exist in metadata, or null if there's no preference
-     * @param maxWaitMs The maximum time in ms for waiting on the metadata
-     * @return The cluster containing topic metadata and the amount of time we waited in ms
-     * @throws KafkaException for all Kafka-related exceptions, including the case where this method is called after producer close
      */
     private ClusterAndWaitTime waitOnMetadata(String topic, Integer partition, long maxWaitMs) throws InterruptedException {
-        // add topic to metadata topic list if it is not there already and reset expiry
+        // 在 metadata 中添加 topic 后,如果 metadata 中没有这个 topic 的 meta，那么 metadata 的更新标志设置为了 true
         metadata.add(topic);
         Cluster cluster = metadata.fetch();
+        // 如果 topic 已经存在 meta 中,则返回该 topic 的 partition 数,否则返回 null
         Integer partitionsCount = cluster.partitionCountForTopic(topic);
-        // Return cached metadata if we have it, and if the record's partition is either undefined
-        // or within the known partition range
+
+        // 当前 metadata 中如果已经有这个 topic 的 meta 的话,就直接返回
         if (partitionsCount != null && (partition == null || partition < partitionsCount))
             return new ClusterAndWaitTime(cluster, 0);
 
         long begin = time.milliseconds();
         long remainingWaitMs = maxWaitMs;
         long elapsed;
-        // Issue metadata requests until we have metadata for the topic and the requested partition,
-        // or until maxWaitTimeMs is exceeded. This is necessary in case the metadata
-        // is stale and the number of partitions for this topic has increased in the meantime.
+        // 发送 metadata 请求,直到获取了这个 topic 的 metadata 或者请求超时
+
+        /**
+         * do ... while 的循环之中，在循环之中，主要做以下操作：
+         1. metadata.requestUpdate() 将 metadata 的 needUpdate 变量设置为 true（强制更新），并返回当前的版本号（version），通过版本号来判断 metadata 是否完成更新；
+         2. sender.wakeup() 唤醒 sender 线程，sender 线程又会去唤醒 NetworkClient 线程，NetworkClient 线程进行一些实际的操作
+         3. metadata.awaitUpdate(version, remainingWaitMs) 等待 metadata 的更新。
+         */
         do {
             if (partition != null) {
                 log.trace("Requesting metadata update for partition {} of topic {}.", partition, topic);
@@ -936,9 +937,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                 log.trace("Requesting metadata update for topic {}.", topic);
             }
             metadata.add(topic);
+            // 返回当前版本号,初始值为0,每次更新时会自增,并将 needUpdate 设置为 true
             int version = metadata.requestUpdate();
+            // 唤起 sender，发送 metadata 请求
             sender.wakeup();
             try {
+                // 等待 metadata 的更新
                 metadata.awaitUpdate(version, remainingWaitMs);
             } catch (TimeoutException ex) {
                 // Rethrow with original maxWaitMs to prevent logging exception with remainingWaitMs
@@ -955,10 +959,12 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                         String.format("Partition %d of topic %s with partition count %d is not present in metadata after %d ms.",
                                 partition, topic, partitionsCount, maxWaitMs));
             }
+            // 认证失败，对当前 topic 没有 Write 权限
             if (cluster.unauthorizedTopics().contains(topic))
                 throw new TopicAuthorizationException(topic);
             remainingWaitMs = maxWaitMs - elapsed;
             partitionsCount = cluster.partitionCountForTopic(topic);
+            // 不停循环,直到 partitionsCount 不为 null（即直到 metadata 中已经包含了这个 topic 的相关信息）
         } while (partitionsCount == null || (partition != null && partition >= partitionsCount));
 
         return new ClusterAndWaitTime(cluster, elapsed);
