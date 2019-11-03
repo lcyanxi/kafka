@@ -430,7 +430,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     apiVersions,
                     throttleTimeSensor,
                     logContext);
-            this.sender = new Sender(logContext,
+            this.sender = new Sender(logContext,   //构造一个sender。sender本身实现的是Runnable接口
                     client,
                     this.metadata,
                     this.accumulator,
@@ -446,7 +446,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                     apiVersions);
             String ioThreadName = NETWORK_THREAD_PREFIX + " | " + clientId;
             this.ioThread = new KafkaThread(ioThreadName, this.sender, true);
-            this.ioThread.start();
+            this.ioThread.start(); //一个线程，开启sender
             this.errors = this.metrics.sensor("errors");
             config.logUnused();
             AppInfoParser.registerAppInfo(JMX_PREFIX, clientId, metrics);
@@ -821,6 +821,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             // first make sure the metadata for the topic is available
             ClusterAndWaitTime clusterAndWaitTime;
             try {
+                //拿不到topic的配置信息，会一直阻塞在这，直到抛异常
                 clusterAndWaitTime = waitOnMetadata(record.topic(), record.partition(), maxBlockTimeMs);
             } catch (KafkaException e) {
                 if (metadata.isClosed())

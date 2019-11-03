@@ -199,6 +199,7 @@ public final class Metadata implements Closeable {
                 // 阻塞线程，等待 metadata 的更新
                 wait(remainingWaitMs);
             long elapsed = System.currentTimeMillis() - begin;
+            //wait时间超出了最长等待时间
             if (elapsed >= maxWaitMs)
                 throw new TimeoutException("Failed to update metadata after " + maxWaitMs + " ms.");
             remainingWaitMs = maxWaitMs - elapsed;
@@ -241,11 +242,6 @@ public final class Metadata implements Closeable {
     /**
      * Updates the cluster metadata. If topic expiry is enabled, expiry time
      * is set for topics if required and expired topics are removed from the metadata.
-     *
-     * @param newCluster the cluster containing metadata for topics with valid metadata
-     * @param unavailableTopics topics which are non-existent or have one or more partitions whose
-     *        leader is not known
-     * @param now current time in milliseconds
      */
     public synchronized void update(Cluster newCluster, Set<String> unavailableTopics, long now) {
         Objects.requireNonNull(newCluster, "cluster should not be null");
@@ -270,12 +266,12 @@ public final class Metadata implements Closeable {
                 }
             }
         }
-
+        //如果有人监听了metadata的更新，通知他们
         for (Listener listener: listeners)
             listener.onMetadataUpdate(newCluster, unavailableTopics);
 
         String previousClusterId = cluster.clusterResource().clusterId();
-
+        //新的cluster覆盖旧的cluster
         if (this.needMetadataForAllTopics) {
             // the listener may change the interested topics, which could cause another metadata refresh.
             // If we have already fetched all topics, however, another fetch should be unnecessary.
@@ -292,7 +288,7 @@ public final class Metadata implements Closeable {
                 log.info("Cluster ID: {}", newClusterId);
             clusterResourceListeners.onUpdate(newCluster.clusterResource());
         }
-
+       //通知所有的阻塞的producer线程
         notifyAll();
         log.debug("Updated cluster metadata version {} to {}", this.version, this.cluster);
     }

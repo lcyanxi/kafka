@@ -515,7 +515,7 @@ public class NetworkClient implements KafkaClient {
             completeResponses(responses);
             return responses;
         }
-        // 判断是否需要更新 meta,如果需要就更新（请求更新 metadata 的地方）
+        //关键点：每次poll的时候判断是否要更新metadata
         long metadataTimeout = metadataUpdater.maybeUpdate(now);
         try {
             this.selector.poll(Utils.min(timeout, metadataTimeout, defaultRequestTimeoutMs));
@@ -948,7 +948,7 @@ public class NetworkClient implements KafkaClient {
             // Beware that the behavior of this method and the computation of timeouts for poll() are
             // highly dependent on the behavior of leastLoadedNode.
 
-            // 选择一个连接数最小的节点
+            // 找到负载最小的Node
             Node node = leastLoadedNode(now);
             if (node == null) {
                 log.debug("Give up sending metadata request since no node is available");
@@ -988,6 +988,7 @@ public class NetworkClient implements KafkaClient {
         @Override
         public void handleCompletedMetadataResponse(RequestHeader requestHeader, long now, MetadataResponse response) {
             this.metadataFetchInProgress = false;
+            //从response中，拿到一个新的cluster对象
             Cluster cluster = response.cluster();
 
             // If any partition has leader with missing listeners, log a few for diagnosing broker configuration
@@ -1064,7 +1065,7 @@ public class NetworkClient implements KafkaClient {
                             metadata.allowAutoTopicCreation());
 
                 log.debug("Sending metadata request {} to node {}", metadataRequest, node);
-                // 发送 metadata 请求
+                //关键点：发送更新Metadata的Request
                 sendInternalMetadataRequest(metadataRequest, nodeConnectionId, now);
                 return defaultRequestTimeoutMs;
             }

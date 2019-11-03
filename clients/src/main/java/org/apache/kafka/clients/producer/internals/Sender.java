@@ -243,9 +243,10 @@ public class Sender implements Runnable {
         Cluster cluster = metadata.fetch();
 
         // get the list of partitions with data ready to send
+        //遍历消息队列中所有的消息，找出对应的，已经ready的Node
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
-        // if there are any partitions whose leaders are not known yet, force metadata update
+        // 如果一个ready的node都没有，请求更新metadata
         if (!result.unknownLeaderTopics.isEmpty()) {
             // The set of topics with unknown leader contains topics with leader election pending as well as
             // topics which may have expired. Add the topic again to metadata to ensure it is included
