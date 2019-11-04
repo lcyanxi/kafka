@@ -812,13 +812,13 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
     }
 
     /**
-     * Implementation of asynchronously send a record to a topic.
+     * 向 topic 异步地发送数据，当发送确认后唤起回调函数
      */
     private Future<RecordMetadata> doSend(ProducerRecord<K, V> record, Callback callback) {
         TopicPartition tp = null;
         try {
             throwIfProducerClosed();
-            // first make sure the metadata for the topic is available
+            // 1.确认数据要发送到的 topic 的 metadata 是可用的
             ClusterAndWaitTime clusterAndWaitTime;
             try {
                 //拿不到topic的配置信息，会一直阻塞在这，直到抛异常
@@ -830,6 +830,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
             }
             long remainingWaitMs = Math.max(0, maxBlockTimeMs - clusterAndWaitTime.waitedOnMetadataMs);
             Cluster cluster = clusterAndWaitTime.cluster;
+            // 2.序列化 record 的 key 和 value
             byte[] serializedKey;
             try {
                 serializedKey = keySerializer.serialize(record.topic(), record.headers(), record.key());
@@ -846,6 +847,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
                         " to class " + producerConfig.getClass(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG).getName() +
                         " specified in value.serializer", cce);
             }
+            // 3. 获取该 record 的 partition 的值（可以指定,也可以根据算法计算）
             int partition = partition(record, serializedKey, serializedValue, cluster);
             tp = new TopicPartition(record.topic(), partition);
 
@@ -854,6 +856,7 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             int serializedSize = AbstractRecords.estimateSizeInBytesUpperBound(apiVersions.maxUsableProduceMagic(),
                     compressionType, serializedKey, serializedValue, headers);
+            // record 的字节超出限制或大于内存限制时,就会抛出 RecordTooLargeException 异常
             ensureValidRecordSize(serializedSize);
             long timestamp = record.timestamp() == null ? time.milliseconds() : record.timestamp();
             log.trace("Sending record {} with callback {} to topic {} partition {}", record, callback, record.topic(), partition);
@@ -862,9 +865,10 @@ public class KafkaProducer<K, V> implements Producer<K, V> {
 
             if (transactionManager != null && transactionManager.isTransactional())
                 transactionManager.maybeAddPartitionToTransaction(tp);
-
+            // 4. 向 accumulator 中追加数据
             RecordAccumulator.RecordAppendResult result = accumulator.append(tp, timestamp, serializedKey,
                     serializedValue, headers, interceptCallback, remainingWaitMs);
+            // 5. 如果 batch 已经满了,唤醒 sender 线程发送数据
             if (result.batchIsFull || result.newBatchCreated) {
                 log.trace("Waking up the sender since topic {} partition {} is either full or getting a new batch", record.topic(), partition);
                 this.sender.wakeup();
