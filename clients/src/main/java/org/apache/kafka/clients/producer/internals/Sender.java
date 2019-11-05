@@ -242,15 +242,12 @@ public class Sender implements Runnable {
     private long sendProducerData(long now) {
         Cluster cluster = metadata.fetch();
 
-        // get the list of partitions with data ready to send
-        //遍历消息队列中所有的消息，找出对应的，已经ready的Node
+        // 获取那些已经可以发送的 RecordBatch 对应的 nodes
         RecordAccumulator.ReadyCheckResult result = this.accumulator.ready(cluster, now);
 
-        // 如果一个ready的node都没有，请求更新metadata
+        // 如果有 topic-partition 的 leader 是未知的,就强制 metadata 更新
         if (!result.unknownLeaderTopics.isEmpty()) {
-            // The set of topics with unknown leader contains topics with leader election pending as well as
-            // topics which may have expired. Add the topic again to metadata to ensure it is included
-            // and request metadata update, since there are messages to send to the topic.
+
             for (String topic : result.unknownLeaderTopics)
                 this.metadata.add(topic);
 
@@ -259,7 +256,7 @@ public class Sender implements Runnable {
             this.metadata.requestUpdate();
         }
 
-        // remove any nodes we aren't ready to send to
+        // 如果与node 没有连接（如果可以连接,同时初始化该连接）,就证明该 node 暂时不能发送数据,暂时移除该 node
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
         while (iter.hasNext()) {
@@ -270,21 +267,20 @@ public class Sender implements Runnable {
             }
         }
 
-        // create produce requests
+        // 返回该 node 对应的所有可以发送的 RecordBatch 组成的 batches（key 是 node.id）,并将 RecordBatch 从对应的 queue 中移除
         Map<Integer, List<ProducerBatch>> batches = this.accumulator.drain(cluster, result.readyNodes,
                 this.maxRequestSize, now);
         if (guaranteeMessageOrder) {
-            // Mute all the partitions drained
+            //记录将要发送的 RecordBatch
             for (List<ProducerBatch> batchList : batches.values()) {
                 for (ProducerBatch batch : batchList)
                     this.accumulator.mutePartition(batch.topicPartition);
             }
         }
-
+        // 将由于元数据不可用而导致发送超时的 RecordBatch 移除
         List<ProducerBatch> expiredBatches = this.accumulator.expiredBatches(this.requestTimeoutMs, now);
-        // Reset the producer id if an expired batch has previously been sent to the broker. Also update the metrics
-        // for expired batches. see the documentation of @TransactionState.resetProducerId to understand why
-        // we need to reset the producer id here.
+
+
         if (!expiredBatches.isEmpty())
             log.trace("Expired {} batches in accumulator", expiredBatches.size());
         for (ProducerBatch expiredBatch : expiredBatches) {
@@ -297,19 +293,12 @@ public class Sender implements Runnable {
 
         sensors.updateProduceRequestMetrics(batches);
 
-        // If we have any nodes that are ready to send + have sendable data, poll with 0 timeout so this can immediately
-        // loop and try sending more data. Otherwise, the timeout is determined by nodes that have partitions with data
-        // that isn't yet sendable (e.g. lingering, backing off). Note that this specifically does not include nodes
-        // with sendable data that aren't ready to send since they would cause busy looping.
         long pollTimeout = Math.min(result.nextReadyCheckDelayMs, notReadyTimeout);
         if (!result.readyNodes.isEmpty()) {
             log.trace("Nodes with data ready to send: {}", result.readyNodes);
-            // if some partitions are already ready to be sent, the select time would be 0;
-            // otherwise if some partition already has some data accumulated but not ready yet,
-            // the select time will be the time difference between now and its linger expiry time;
-            // otherwise the select time will be the time difference between now and the metadata expiry time;
             pollTimeout = 0;
         }
+        // 发送 RecordBatch
         sendProduceRequests(batches, now);
 
         return pollTimeout;
@@ -657,7 +646,7 @@ public class Sender implements Runnable {
     }
 
     /**
-     * Create a produce request from the given record batches
+     *  发送 produce 请求
      */
     private void sendProduceRequest(long now, int destination, short acks, int timeout, List<ProducerBatch> batches) {
         if (batches.isEmpty())
