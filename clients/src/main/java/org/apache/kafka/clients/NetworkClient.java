@@ -488,7 +488,9 @@ public class NetworkClient implements KafkaClient {
                         header.apiVersion(), clientRequest.apiKey(), request, clientRequest.correlationId(), destination);
             }
         }
+        // Send是一个接口，这里返回的是NetworkSend，而NetworkSend继承ByteBufferSend
         Send send = request.toSend(destination, header);
+        // 表示正在发送的请求
         InFlightRequest inFlightRequest = new InFlightRequest(
                 clientRequest,
                 header,
@@ -497,6 +499,7 @@ public class NetworkClient implements KafkaClient {
                 send,
                 now);
         this.inFlightRequests.add(inFlightRequest);
+        //　将send和对应kafkaChannel绑定起来，并开启该kafkaChannel底层socket的写事件
         selector.send(send);
     }
 
@@ -534,6 +537,7 @@ public class NetworkClient implements KafkaClient {
         handleConnections();
         handleInitiateApiVersionRequests(updatedNow);
         handleTimedOutRequests(responses, updatedNow);
+        // 当收到kafka server的ack时，调用每个请求当时设置的毁掉函数
         completeResponses(responses);
 
         return responses;

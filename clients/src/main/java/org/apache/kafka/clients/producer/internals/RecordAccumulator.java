@@ -256,8 +256,10 @@ public final class RecordAccumulator {
      */
     private RecordAppendResult tryAppend(long timestamp, byte[] key, byte[] value, Header[] headers,
                                          Callback callback, Deque<ProducerBatch> deque) {
+        //拿出队列的最后1个元素
         ProducerBatch last = deque.peekLast();
         if (last != null) {
+            //最后一个元素, 即RecordBatch不为空，把该Record加入该RecordBatch
             FutureRecordMetadata future = last.tryAppend(timestamp, key, value, headers, callback, time.milliseconds());
             if (future == null)
                 last.closeForRecordAppends();

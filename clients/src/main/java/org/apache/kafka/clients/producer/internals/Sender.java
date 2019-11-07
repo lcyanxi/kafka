@@ -236,6 +236,7 @@ public class Sender implements Runnable {
         }
 
         long pollTimeout = sendProducerData(now);
+        // 关于 socket 的一些实际的读写操作（其中包括 meta 信息的更新）
         client.poll(pollTimeout, now);
     }
 
@@ -255,7 +256,6 @@ public class Sender implements Runnable {
 
             this.metadata.requestUpdate();
         }
-
         // 如果与node 没有连接（如果可以连接,同时初始化该连接）,就证明该 node 暂时不能发送数据,暂时移除该 node
         Iterator<Node> iter = result.readyNodes.iterator();
         long notReadyTimeout = Long.MAX_VALUE;
@@ -641,6 +641,7 @@ public class Sender implements Runnable {
      * Transfer the record batches into a list of produce requests on a per-node basis
      */
     private void sendProduceRequests(Map<Integer, List<ProducerBatch>> collated, long now) {
+        //分别处理发往每个broker上的消息
         for (Map.Entry<Integer, List<ProducerBatch>> entry : collated.entrySet())
             sendProduceRequest(now, entry.getKey(), acks, requestTimeoutMs, entry.getValue());
     }
@@ -661,7 +662,7 @@ public class Sender implements Runnable {
             if (batch.magic() < minUsedMagic)
                 minUsedMagic = batch.magic();
         }
-
+        //将发往某个broker上消息按TopicPartition进行归类
         for (ProducerBatch batch : batches) {
             TopicPartition tp = batch.topicPartition;
             MemoryRecords records = batch.records();
@@ -692,8 +693,10 @@ public class Sender implements Runnable {
         };
 
         String nodeId = Integer.toString(destination);
+        //实例化一个ClientRequest，这个Request时发往某个broker,包含大于等于１个TopicPartition
         ClientRequest clientRequest = client.newClientRequest(nodeId, requestBuilder, now, acks != 0,
                 requestTimeoutMs, callback);
+        //　调用NetworkClient做进一步处理
         client.send(clientRequest, now);
         log.trace("Sent produce request to {}: {}", nodeId, requestBuilder);
     }
