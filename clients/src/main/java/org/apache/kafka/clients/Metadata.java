@@ -53,16 +53,16 @@ public final class Metadata implements Closeable {
     private static final long TOPIC_EXPIRY_NEEDS_UPDATE = -1L;
     // metadata 更新失败时,为避免频繁更新 meta,最小的间隔时间,默认 100ms
     private final long refreshBackoffMs;
-    // metadata 的过期时间, 默认 60,000ms
+    //关键值：每隔多久，更新一次。 metadata 的过期时间, 默认 60,000ms
     private final long metadataExpireMs;
-    // 每更新成功1次，version自增1,主要是用于判断 metadata 是否更新
+    // 每更新成功1次，version自增1,主要是用于判断 metadata 是否更新，这个变量主要用于在while循环，wait的时候，作为循环判断条件
     private int version;
     // 最近一次更新时的时间（包含更新失败的情况）
     private long lastRefreshMs;
     // 最近一次成功更新的时间（如果每次都成功的话，与前面的值相等, 否则，lastSuccessulRefreshMs < lastRefreshMs)
     private long lastSuccessfulRefreshMs;
     private AuthenticationException authenticationException;
-    // 集群中一些 topic 的信息
+    //集群配置信息
     private Cluster cluster;
     // 是都需要更新 metadata
     private boolean needUpdate;
@@ -190,7 +190,7 @@ public final class Metadata implements Closeable {
 
         long begin = System.currentTimeMillis();
         long remainingWaitMs = maxWaitMs;
-        // 不断循环,直到 metadata 更新成功,version 自增
+        // 不断循环,直到 metadata 更新成功,version 自增，否则会循环，一直wait
         while ((this.version <= lastVersion) && !isClosed()) {
             AuthenticationException ex = getAndClearAuthenticationException();
             if (ex != null)

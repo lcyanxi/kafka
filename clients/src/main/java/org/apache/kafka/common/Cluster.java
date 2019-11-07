@@ -40,14 +40,20 @@ public final class Cluster {
     private final boolean isBootstrapConfigured;
     //Node也就是Broker
     private final List<Node> nodes;
+    // 未认证的 topic 列表
     private final Set<String> unauthorizedTopics;
+    // 内置的 topic 列表
     private final Set<String> internalTopics;
     private final Node controller;
     //Topic/Partition和broker list的映射关系
     private final Map<TopicPartition, PartitionInfo> partitionsByTopicPartition;
+    // topic 与 partition 的对应关系
     private final Map<String, List<PartitionInfo>> partitionsByTopic;
+    //  可用（leader 不为 null）的 topic 与 partition 的对应关系
     private final Map<String, List<PartitionInfo>> availablePartitionsByTopic;
+    // node 与 partition 的对应关系
     private final Map<Integer, List<PartitionInfo>> partitionsByNode;
+    // node 与 id 的对应关系
     private final Map<Integer, Node> nodesById;
     private final ClusterResource clusterResource;
 

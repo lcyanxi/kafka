@@ -17,7 +17,7 @@
 package org.apache.kafka.common;
 
 /**
- * This is used to describe per-partition state in the MetadataResponse.
+ * topic-partition: 包含 topic、partition、leader、replicas、isr
  */
 public class PartitionInfo {
 
